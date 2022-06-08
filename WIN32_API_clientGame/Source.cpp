@@ -1,20 +1,16 @@
-#include <Windows.h>
-#include<tchar.h>
-#include<string.h>
-#include<stdio.h>
-#include<stdlib.h>
-#include<iostream>
-LRESULT CALLBACK WndProc(HWND hwnd, UINT iMsg, WPARAM wParam, LPARAM lParam);
-HINSTANCE hInst;
+#include <windows.h>
+#include <TCHAR.H>
+#include <stdio.h>
+
 #define WM_ASYNC WM_USER+2
-
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdLine, int nCmdShow)
+LRESULT CALLBACK WndProc(HWND hwnd, UINT iMsg,
+	WPARAM wParam, LPARAM lParam);
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
+	LPSTR lpszCmdLine, int nCmdShow)
 {
-	HWND hwnd;
-	MSG msg;
-	WNDCLASS WndClass;
-
-	hInst = hInstance;
+	HWND 	  hwnd;
+	MSG 	  msg;
+	WNDCLASS  WndClass;
 	WndClass.style = CS_HREDRAW | CS_VREDRAW;
 	WndClass.lpfnWndProc = WndProc;
 	WndClass.cbClsExtra = 0;
@@ -25,25 +21,22 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdLi
 	WndClass.hbrBackground = (HBRUSH)GetStockObject(WHITE_BRUSH);
 	WndClass.lpszMenuName = NULL;
 	WndClass.lpszClassName = _T("Window Class Name");
-
 	RegisterClass(&WndClass);
-
 	hwnd = CreateWindow(
 		_T("Window Class Name"),
 		_T("Client Window"),
 		WS_OVERLAPPEDWINDOW,
-		50,
-		50,
-		900,
-		500,
+		CW_USEDEFAULT,
+		CW_USEDEFAULT,
+		1000,
+		1000,
 		NULL,
 		NULL,
 		hInstance,
-		NULL);
-
+		NULL
+		);
 	ShowWindow(hwnd, nCmdShow);
 	UpdateWindow(hwnd);
-
 	while (GetMessage(&msg, NULL, 0, 0))
 	{
 		TranslateMessage(&msg);
@@ -51,66 +44,142 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdLi
 	}
 	return (int)msg.wParam;
 }
-LRESULT CALLBACK WndProc(HWND hwnd, UINT iMsg, WPARAM wParam, LPARAM lParam)
+
+#include <math.h>
+#define  BSIZE 100	//지름
+
+BOOL InRectangle(int mx, int my)
+{
+	if (mx<BSIZE * 5 && my<BSIZE * 5) return TRUE;	//사각형 안을 클릭한 경우
+	else return FALSE;
+}
+
+LRESULT CALLBACK WndProc(HWND hwnd, UINT iMsg,
+	WPARAM wParam, LPARAM lParam)
 {
 	HDC hdc;
 	PAINTSTRUCT ps;
 	static WSADATA wsadata;
 	static SOCKET s;
 	static SOCKADDR_IN addr = { 0 };
-	static TCHAR msg[10];
-
-	static int x1 = 0, x2 = 0, y1 = 0, y2 = 0;
-	static int shape = 0;
-	static int recv_x1 = 0, recv_x2 = 0, recv_y1 = 0, recv_y2 = 0;
-	static int recv_shape = 0;
-
-	static int token2[5];
-	static int mx = 0, my = 0;
-	static bool Drag = false;
-	static bool MyTurn = FALSE;
-
-	HPEN redPen, blackPen, bluePen;
-	static int  mX, mY;
-	static int circle[4][8] = { 0, };
-	static int recv_circle[4][8] = { 0, };
-
+	static TCHAR msg[200];
+	static TCHAR str[100];
+	static char buffer[100];
+	static int count;
 	int msgLen;
-	char buffer[100];
-	char *context;
-	char *token;
-	int pos_y = 0;
-	int i = 0;
+
+	TCHAR seps[] = _T(",");
+	TCHAR* token;
+	TCHAR* nexttoken;
+	TCHAR Btk[100];
+	static int dx, dy;
+	static int	cx, cy;
+	static int savex[5][5] = { 0 };
+	static int savey[5][5] = { 0 };
+	static BOOL isC;
+	static BOOL isP;
+	static int	iColor;
+	static int sendx[5][5] = { 0 }; 
+	static int sendy[5][5] = { 0 };
+	static int sx, sy;
+	HPEN hPen;
+	static TCHAR str2[100];
 
 	switch (iMsg)
 	{
 	case WM_CREATE:
-		WSAStartup(MAKEWORD(2, 2), &wsadata);                    //1.윈속 사용시작하기
-		s = socket(AF_INET, SOCK_STREAM, 0);                    //2.소켓 생성하기
+		WSAStartup(MAKEWORD(2, 2), &wsadata);
+		s = socket(AF_INET, SOCK_STREAM, 0);
 		addr.sin_family = AF_INET;
 		addr.sin_port = 20;
 		addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-		WSAAsyncSelect(s, hwnd, WM_ASYNC, FD_READ);                //서버에서 보낸 데이터를 받아야 하므로 FD_READ 이벤트에 대해 WM_ASYNC윈도우 메시지를 등록
-		if (connect(s, (LPSOCKADDR)&addr, sizeof(addr)) == -1)    //3.연결 요구하기(접속실패시 종료)
+		WSAAsyncSelect(s, hwnd, WM_ASYNC, FD_READ);
+		if (connect(s, (LPSOCKADDR)&addr, sizeof(addr)) == -1)
 			return 0;
 		break;
-	case WM_ASYNC:                                                //양방향 통신이므로 클라이언트가 다른 메시지를 처리하는 도중 서버에서 데이터를 보내면
-		switch (lParam)                                            //WM_ASYNC와 lParam이 같이 도착한다.
+	case WM_PAINT:
+		hdc = BeginPaint(hwnd, &ps);
+
+		if (isP){
+			if (_tcscmp(msg, _T(""))){
+				token = _tcstok_s(msg, seps, &nexttoken);
+				TextOut(hdc, 0, 0, token, (int)_tcslen(token));
+				//_tprintf(_T("%s\n"), token);
+				_tcscpy_s(Btk, _countof(Btk), token);
+				sx = _wtoi(Btk);
+
+				while (token != NULL){
+					//다음 문자열 구하기
+					//_tprintf(_T("%i\n"), sx);
+					TextOut(hdc, 0, 30, token, (int)_tcslen(token));
+					_tcscpy_s(Btk, _countof(Btk), token);
+					sy = _wtoi(Btk);
+					token = _tcstok_s(NULL, seps, &nexttoken);
+				}
+				sendx[(sx - (BSIZE / 2)) / BSIZE][(sy - (BSIZE / 2)) / BSIZE] = sx;
+				sendy[(sx - (BSIZE / 2)) / BSIZE][(sy - (BSIZE / 2)) / BSIZE] = sy;
+				//Ellipse(hdc, sendx[sx / BSIZE][sy / BSIZE] - 50, sendy[sx / BSIZE][sy / BSIZE] - 50, sendx[sx / BSIZE][sy / BSIZE] + 50, sendy[sx / BSIZE][sy / BSIZE] + 50);
+			}
+			isP = false;
+		}
+
+		//사각틀 생성
+		for (int i = 0; i < 5; i++){
+			MoveToEx(hdc, BSIZE*(i + 1), 0, NULL);
+			LineTo(hdc, BSIZE*(i + 1), BSIZE * 5);
+		}
+
+		for (int i = 0; i < 5; i++){
+			MoveToEx(hdc, 0, BSIZE*(i + 1), NULL);
+			LineTo(hdc, BSIZE * 5, BSIZE*(i + 1));
+		}
+
+		hPen = CreatePen(PS_SOLID, 1, RGB(255, 0, 0));
+		(HPEN)SelectObject(hdc, hPen);
+		//저장된 원 그리기
+		for (int i = 0; i < 5; i++){
+			for (int j = 0; j < 5; j++){
+				if (sendx[i][j] != 0 && sendy[i][j] != 0){
+					Ellipse(hdc, sendx[i][j] - 50, sendy[i][j] - 50, sendx[i][j] + 50, sendy[i][j] + 50);
+				}
+			}
+		}
+
+		hPen = CreatePen(PS_SOLID, 1, RGB(0, 0, 255));
+		(HPEN)SelectObject(hdc, hPen);
+		//저장된 원 그리기
+		for (int i = 0; i < 5; i++){
+			for (int j = 0; j < 5; j++){
+				if (savex[i][j] != 0 && savey[i][j] != 0){
+					Ellipse(hdc, savex[i][j] - 50, savey[i][j] - 50, savex[i][j] + 50, savey[i][j] + 50);
+				}
+			}
+		}
+
+		//원그리기
+		if (isC){
+			hPen = CreatePen(PS_SOLID, 1, RGB(0, 0, 255));
+			(HPEN)SelectObject(hdc, hPen);
+			Ellipse(hdc, cx - 50, cy - 50, cx + 50, cy + 50);
+			isC = false;
+		}
+
+		EndPaint(hwnd, &ps);
+		break;
+	case WM_ASYNC:
+		switch (lParam)
 		{
 		case FD_READ:
-			recv(s, buffer, 100, 0);
-			_tcscpy_s(msg, buffer);
-			context = NULL;
-			token = strtok_s(msg, ",", &context);            //context에는 분리된 후 남은 문자열이 들어간다.
-			while (token != NULL)
-			{
-				token2[i++] = atoi(token);
-				//TextOut(hdc, 0, pos_y, token, _tcslen(token));
-				token = strtok_s(NULL, ",", &context);
-				pos_y += 20;
-			}
-			recv_circle[token2[0]][token2[1]] = 1;
-			MyTurn = TRUE;
+			msgLen = recv(s, buffer, 100, 0);
+			buffer[msgLen] = NULL;
+			isP = true;
+#ifdef _UNICODE
+			msgLen = MultiByteToWideChar(CP_ACP, 0, buffer, strlen(buffer), NULL, NULL);
+			MultiByteToWideChar(CP_ACP, 0, buffer, strlen(buffer), msg, msgLen);
+			msg[msgLen] = NULL;
+#else
+			strcpy_s(msg, buffer);
+#endif
 			InvalidateRgn(hwnd, NULL, TRUE);
 			break;
 		default:
@@ -118,76 +187,51 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT iMsg, WPARAM wParam, LPARAM lParam)
 		}
 		break;
 	case WM_LBUTTONDOWN:
-		if (MyTurn)
-		{
-			mX = LOWORD(lParam);
-			mY = HIWORD(lParam);
-			if ((mY / 100) < 4 && (mX / 100) < 8)
-			{
-				circle[mY / 100][mX / 100] = 1;
-				_stprintf_s(buffer, _T("%d,%d"), mY / 100, mX / 100);
-				send(s, (LPSTR)buffer, 10, 0);
-				//_stprintf_s(buffer, NULL);
-			}
-			InvalidateRgn(hwnd, NULL, TRUE);
-			MyTurn = FALSE;
+
+		dx = LOWORD(lParam);	//마우스 좌표
+		dy = HIWORD(lParam);
+
+		if (InRectangle(dx, dy)) {	//큰 사각형 내부에 클릭 했는지 확인
+			isC = TRUE;
 		}
-		break;
-	case WM_MOUSEMOVE:
-		if (Drag)
-		{
-			x2 = LOWORD(lParam);
-			y2 = HIWORD(lParam);
+
+		if (isC){
+			cx = (dx / BSIZE)*BSIZE + BSIZE / 2;		//원의 중심 좌표 구하기
+			cy = (dy / BSIZE)*BSIZE + BSIZE / 2;
+
+			savex[dx / BSIZE][dy / BSIZE] = cx;
+			savey[dx / BSIZE][dy / BSIZE] = cy;
+
 			InvalidateRgn(hwnd, NULL, TRUE);
 		}
-		break;
-	case WM_LBUTTONUP:
 
-		break;
+		wsprintf(str, TEXT("%d"), savex[dx / BSIZE][dy / BSIZE]);
+		wsprintf(str2, TEXT("%d"), savey[dx / BSIZE][dy / BSIZE]);
+		_tcscat_s(str, _T(","));
+		_tcscat_s(str, str2);
 
-	case WM_PAINT:
-		hdc = BeginPaint(hwnd, &ps);
-		for (int i = 0; i < 5; i++)            //--------------프레임
-		{
-			MoveToEx(hdc, 0, i * 100, NULL);
-			LineTo(hdc, 800, i * 100);
-		}
-		for (int i = 0; i < 9; i++)
-		{
-			MoveToEx(hdc, i * 100, 0, NULL);
-			LineTo(hdc, i * 100, 400);
-		}                                    //--------------프레임
-
-		bluePen = CreatePen(PS_SOLID, 1, RGB(0, 0, 255));
-		for (int i = 0; i < 4; i++)
-		{
-			for (int j = 0; j < 8; j++)
+		if (isC)
+			if (s == INVALID_SOCKET)
+				return 0;
+			else
 			{
-				SelectObject(hdc, bluePen);
-				if (circle[i][j])
-					Ellipse(hdc, 100 * j, 100 * i, 100 * j + 100, 100 * i + 100);
+#ifdef _UNICODE
+				msgLen = WideCharToMultiByte(CP_ACP, 0, str, -1, NULL, 0, NULL, NULL);
+				WideCharToMultiByte(CP_ACP, 0, str, -1, buffer, msgLen, NULL, NULL);
+#else
+				strcpy_s(buffer, str);
+				msgLen = strlen(buffer);
+#endif
+				send(s, (LPSTR)buffer, msgLen + 1, 0);
+				count = 0;
+				return 0;
 			}
-		}
-
-		redPen = CreatePen(PS_SOLID, 1, RGB(255, 0, 0));
-		for (int i = 0; i < 4; i++)
-		{
-			for (int j = 0; j < 8; j++)
-			{
-				SelectObject(hdc, redPen);
-				if (recv_circle[i][j])
-					Ellipse(hdc, 100 * j, 100 * i, 100 * j + 100, 100 * i + 100);
-			}
-		}
-		//_stprintf_s(msg, NULL);
-		EndPaint(hwnd, &ps);
-		break;
+		return 0;
 	case WM_DESTROY:
 		closesocket(s);
 		WSACleanup();
 		PostQuitMessage(0);
 		break;
-
 	}
 	return DefWindowProc(hwnd, iMsg, wParam, lParam);
 }
